@@ -74,11 +74,15 @@ def main():
     elif command == "user":
         things = g.user(query)
 
-    elif command == "userposts":
-        things = g.userposts(query, gabs=args.number_gabs, gabs_after=args.gabs_after)
-    elif command == "usercomments":
-        things = g.usercomments(query)
-    elif command == "followers":
+    elif command == 'userposts':
+        things = g.userposts(
+            query,
+            gabs=args.number_gabs,
+            gabs_after=args.gabs_after
+        )
+    elif command == 'usercomments':
+        things = g.usercomments(query, gabs=args.number_gabs)
+    elif command == 'followers':
         things = g.followers(query)
     elif command == "following":
         things = g.following(query)

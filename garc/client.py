@@ -201,22 +201,20 @@ class Garc(object):
             if num_gabs > gabs and gabs != -1:
                 break
 
-    def usercomments(self, q):
+    def usercomments(self, q, gabs=-1):
         """
         collect comments from a users feed
         """
         # We need to get the account id to collect statuses
-        account_url = "https://gab.com/api/v1/account_by_username/%s" % (q)
-        account_id = self.get(account_url).json()["id"]
-        max_id = ""
-        base_url = (
-            "https://gab.com/api/v1/accounts/%s/statuses?only_comments=true&exclude_replies=false&max_id="
-            % (account_id)
-        )
+        account_url = 'https://gab.com/api/v1/account_by_username/%s' % (q)
+        account_id = self.get(account_url).json()['id']
+        max_id = ''
+        base_url = "https://gab.com/api/v1/accounts/%s/statuses?only_comments=true&exclude_replies=false" % (account_id)
+        actual_endpoint = base_url
 
         num_gabs = 0
         while True:
-            url = base_url + max_id
+            url = actual_endpoint
             resp = self.get(url)
             posts = resp.json()
             if not posts:
@@ -225,6 +223,9 @@ class Garc(object):
                 yield self.format_post(post)
                 max_id = post["id"]
             num_gabs += len(posts)
+            actual_endpoint = base_url + 'max_id=' + max_id
+            if  (num_gabs > gabs and gabs != -1):
+                break
 
     def login(self):
         """
