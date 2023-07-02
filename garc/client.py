@@ -7,24 +7,26 @@ import requests
 import datetime
 from bs4 import BeautifulSoup
 import html
-if sys.version_info[:2] <= (2, 7):
-    # Python 2
-    get_input = raw_input
-    str_type = unicode
-    import ConfigParser as configparser
-else:
-    # Python 3
-    get_input = input
-    str_type = str
-    import configparser
+import configparser
+
+get_input = input
+str_type = str
+
 
 class Garc(object):
     """
     Garc allows you retrieve data from the Gab API.
     """
 
-    def __init__(self, user_account=None, user_password=None,
-                 connection_errors=0, http_errors=0, profile='main', config=None):
+    def __init__(
+        self,
+        user_account=None,
+        user_password=None,
+        connection_errors=0,
+        http_errors=0,
+        profile="main",
+        config=None,
+    ):
         """
         Create a Garc instance. If account informaton isn't given it will search for them.
         """
@@ -35,12 +37,7 @@ class Garc(object):
         self.http_errors = http_errors
         self.cookie = None
         self.profile = profile
-        self.search_types = ['date']
-
-
-
-
-
+        self.search_types = ["date"]
 
         if config:
             self.config = config
@@ -50,7 +47,7 @@ class Garc(object):
         self.check_keys()
         self.load_headers()
 
-    def search(self, q, search_type='date', gabs=-1):
+    def search(self, q, search_type="date", gabs=-1):
         """
         Pass in a query. Defaults to recent sort by date.
         Defaults to retrieving as many historical gabs as possible.
@@ -59,12 +56,11 @@ class Garc(object):
         if search_type in self.search_types:
             search_type = search_type
         else:
-            search_type = 'date'
+            search_type = "date"
 
         num_gabs = 0
-        max_id = ''
+        max_id = ""
         while True:
-
             # url = "https://gab.com/api/search?q=%s&sort=%s&before=%s" % (q, search_type, num_gabs)
             url = "https://gab.com/api/v1/timelines/tag/%s?max_id=%s" % (q, max_id)
             resp = self.get(url)
@@ -85,24 +81,34 @@ class Garc(object):
             if not posts:
                 logging.info("No more posts returned for search: %s", (q))
                 break
-            max_id = posts[-1]['id']
+            max_id = posts[-1]["id"]
             for post in posts:
                 yield post
             num_gabs += len(posts)
-            if  (num_gabs > gabs and gabs != -1):
+            if num_gabs > gabs and gabs != -1:
                 break
-    def public_search(self, q,  gabs=-1,gabs_after=(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M")):
+
+    def public_search(
+        self,
+        q,
+        gabs=-1,
+        gabs_after=(
+            datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(minutes=20)
+        ).strftime("%Y-%m-%dT%H:%M"),
+    ):
         """
-        Pass in a query. 
+        Pass in a query.
         Searches the public Gab timeline for posts which match query q
         Match is case insensitive
         """
 
         num_gabs = 0
-        max_id = ''
+        max_id = ""
         while True:
-
-            url = "https://gab.com/api/v1/timelines/public?limit=40&max_id=%s" % (max_id)  
+            url = "https://gab.com/api/v1/timelines/public?limit=40&max_id=%s" % (
+                max_id
+            )
 
             resp = self.anonymous_get(url)
             # time.sleep(1)
@@ -125,37 +131,39 @@ class Garc(object):
                 break
 
             for post in posts:
-                if self.search_gab_text(post,q):
+                if self.search_gab_text(post, q):
                     yield self.format_post(post)
-                max_id = post['id']
-                max_created_at = post['created_at']
+                max_id = post["id"]
             num_gabs += len(posts)
-            if  (num_gabs > gabs and gabs != -1):
+            if num_gabs > gabs and gabs != -1:
                 logging.info("Number of gabs condition met: %s", (q))
                 break
 
             # Check if first collected gab is after the date specified
-            # The API returns strange results sometimes where gabs are not in date order, so ocassionally random dates pop up
-            # But these never seem to appear at the start, so checking the first item keeps the function from prematurely ending
+            # The API returns strange results sometimes where gabs are not in date order,
+            # so ocassionally random dates pop up
+            # But these never seem to appear at the start, so checking the first item keeps
+            # the function from prematurely ending
             # It does mean an additional call is made however
-            if posts[0]['created_at'] < gabs_after:
-                if posts[1]['created_at'] < gabs_after:
-                    if posts[2]['created_at'] < gabs_after:
-                        if posts[-1]['created_at'] < gabs_after:
-
+            if posts[0]["created_at"] < gabs_after:
+                if posts[1]["created_at"] < gabs_after:
+                    if posts[2]["created_at"] < gabs_after:
+                        if posts[-1]["created_at"] < gabs_after:
                             logging.info("Gabs after condition met: %s", (q))
 
                             break
+
     def user(self, q):
         """
         collect user json data
         """
-        url = 'https://gab.com/api/v1/account_by_username/%s' % (q)
+        url = "https://gab.com/api/v1/account_by_username/%s" % (q)
         resp = self.get(url)
         yield resp.json()
 
     def top(self, timespan=None):
-        if timespan is None: timespan = "today"
+        if timespan is None:
+            timespan = "today"
         assert timespan in ["today", "weekly", "monthly", "yearly"]
 
         url = "https://gab.com/api/v1/timelines/explore?sort_by=top_%s" % timespan
@@ -163,17 +171,19 @@ class Garc(object):
         resp = self.anonymous_get(url)
         return resp.json()
 
-
-    def userposts(self, q, gabs=-1, gabs_after='2000-01-01'):
+    def userposts(self, q, gabs=-1, gabs_after="2000-01-01"):
         """
         collect posts from a user feed
         """
         # We need to get the account id to collect statuses
-        account_url = 'https://gab.com/api/v1/account_by_username/%s' % (q)
-        account_id = self.get(account_url).json()['id']
-        max_id = ''
-        base_url = "https://gab.com/api/v1/accounts/%s/statuses?exclude_replies=true&max_id=" % (account_id)
-        
+        account_url = "https://gab.com/api/v1/account_by_username/%s" % (q)
+        account_id = self.get(account_url).json()["id"]
+        max_id = ""
+        base_url = (
+            "https://gab.com/api/v1/accounts/%s/statuses?exclude_replies=true&max_id="
+            % (account_id)
+        )
+
         num_gabs = 0
         while True:
             url = base_url + max_id
@@ -181,16 +191,17 @@ class Garc(object):
             posts = resp.json()
             if not posts:
                 break
-            last_published_date = posts[-1]['created_at']
+            last_published_date = posts[-1]["created_at"]
             for post in posts:
                 yield self.format_post(post)
-                max_id = post['id']
+                max_id = post["id"]
             num_gabs += len(posts)
             if last_published_date < gabs_after:
                 break
-            if  (num_gabs > gabs and gabs != -1):
+            if num_gabs > gabs and gabs != -1:
                 break
-    def usercomments(self, q):
+
+    def usercomments(self, q, gabs=-1):
         """
         collect comments from a users feed
         """
@@ -198,20 +209,23 @@ class Garc(object):
         account_url = 'https://gab.com/api/v1/account_by_username/%s' % (q)
         account_id = self.get(account_url).json()['id']
         max_id = ''
-        base_url = "https://gab.com/api/v1/accounts/%s/statuses?only_comments=true&exclude_replies=false&max_id=" % (account_id)
-        
+        base_url = "https://gab.com/api/v1/accounts/%s/statuses?only_comments=true&exclude_replies=false" % (account_id)
+        actual_endpoint = base_url
+
         num_gabs = 0
         while True:
-            url = base_url + max_id
+            url = actual_endpoint
             resp = self.get(url)
             posts = resp.json()
             if not posts:
                 break
-            last_published_date = posts[-1]['created_at']
             for post in posts:
                 yield self.format_post(post)
-                max_id = post['id']
+                max_id = post["id"]
             num_gabs += len(posts)
+            actual_endpoint = base_url + 'max_id=' + max_id
+            if  (num_gabs > gabs and gabs != -1):
+                break
 
     def login(self):
         """
@@ -224,23 +238,33 @@ class Garc(object):
             logging.info("refreshing login cookie")
 
         url = "https://gab.com/auth/sign_in"
-        input_token = requests.get(url,headers = self.headers)
+        input_token = requests.get(url, headers=self.headers)
         page_info = BeautifulSoup(input_token.content, "html.parser")
-        token = page_info.select('meta[name=csrf-token]')[0]['content']
+        token = page_info.select("meta[name=csrf-token]")[0]["content"]
 
-        payload = {'user[email]':self.user_account, 'user[password]':self.user_password, 'authenticity_token':token}
+        payload = {
+            "user[email]": self.user_account,
+            "user[password]": self.user_password,
+            "authenticity_token": token,
+        }
 
-        d = requests.request("POST", url, params=payload, cookies=input_token.cookies,headers = self.headers)
+        d = requests.request(
+            "POST",
+            url,
+            params=payload,
+            cookies=input_token.cookies,
+            headers=self.headers,
+        )
         self.cookie = d.cookies
 
-    def followers(self,q):
+    def followers(self, q):
         """
         find all followers of a specific user
         This is currently broken
         """
         num_followers = 0
         while True:
-            url = "https://gab.com/users/%s/followers?before=%s" % (q,num_followers)
+            url = "https://gab.com/users/%s/followers?before=%s" % (q, num_followers)
             resp = self.get(url)
             posts = resp.json()["data"]
             if not posts:
@@ -249,13 +273,13 @@ class Garc(object):
                 yield post
             num_followers += len(posts)
 
-    def following(self,q):
+    def following(self, q):
         """
         This is currently broken
         """
         num_followers = 0
         while True:
-            url = "https://gab.com/users/%s/following?before=%s" % (q,num_followers)
+            url = "https://gab.com/users/%s/following?before=%s" % (q, num_followers)
             resp = self.get(url)
             posts = resp.json()["data"]
             if not posts:
@@ -263,8 +287,6 @@ class Garc(object):
             for post in posts:
                 yield post
             num_followers += len(posts)
-
-
 
     def get(self, url, **kwargs):
         """
@@ -273,11 +295,10 @@ class Garc(object):
         if not self.cookie:
             self.login()
 
-        connection_error_count = kwargs.pop('connection_error_count', 1)
         try:
             logging.info("getting %s %s", url, kwargs)
 
-            r = requests.get(url, cookies=self.cookie, headers = self.headers)
+            r = requests.get(url, cookies=self.cookie, headers=self.headers)
             # Maybe should implement allow_404 that stops retrying, ala twarc
 
             if r.status_code == 404:
@@ -291,18 +312,19 @@ class Garc(object):
             return r
         except requests.exceptions.ConnectionError as e:
             logging.warn("Connection Error from Gab API! trying again")
+            logging.debug(e)
             time.sleep(15)
 
             self.get(url, **kwargs)
+
     def anonymous_get(self, url, **kwargs):
         """
         Perform an anonymous API request. Used for accessing public timelines.
         """
 
-        connection_error_count = kwargs.pop('connection_error_count', 1)
         try:
             logging.info("getting %s %s", url, kwargs)
-            r = requests.get(url, headers = self.headers)
+            r = requests.get(url, headers=self.headers)
             # Maybe should implement allow_404 that stops retrying, ala twarc
 
             if r.status_code == 404:
@@ -316,51 +338,44 @@ class Garc(object):
             return r
         except requests.exceptions.ConnectionError as e:
             logging.warn("Connection Error from Gab API! trying again")
+            logging.debug(e)
             time.sleep(15)
 
             self.anonymous_get(url, **kwargs)
 
-
-
-    def search_gab_text(self,gab,query):
+    def search_gab_text(self, gab, query):
         """
         Search if query exists within the text of a gab
         Return True if it does, False if not
         """
-        if  re.search(query.lower(),gab['content'].lower()):
+        if re.search(query.lower(), gab["content"].lower()):
             match = True
         else:
             match = False
 
         return match
 
-    def format_post(self,post):
+    def format_post(self, post):
         """
         Format post so that body field is inserted, this harmonizes new mastodon data with old gab data
         """
-        body = BeautifulSoup(html.unescape(post['content']), features="html.parser").get_text()
-        post['body'] = body
+        body = BeautifulSoup(
+            html.unescape(post["content"]), features="html.parser"
+        ).get_text()
+        post["body"] = body
         return post
 
-
     def load_headers(self):
-
-        path = self.config
-        profile = self.profile
         config = configparser.ConfigParser()
         config.read(self.config)
-        if 'headers' not in config.sections():
-            user_agent = 'garc'
+        if "headers" not in config.sections():
+            user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
         else:
-            user_agent = config.get('headers','user_agent')
+            user_agent = config.get("headers", "user_agent")
 
-        headers = {
-            'User-Agent' : user_agent
-        }
+        headers = {"User-Agent": user_agent}
 
-        setattr(self,'headers',headers)
-
-
+        setattr(self, "headers", headers)
 
     def check_keys(self):
         """
@@ -370,18 +385,14 @@ class Garc(object):
         """
         env = os.environ.get
         if not self.user_account:
-            self.user_account = env('GAB_ACCOUNT')
+            self.user_account = env("GAB_ACCOUNT")
         if not self.user_password:
-            self.user_password = env('GAB_PASSWORD')
+            self.user_password = env("GAB_PASSWORD")
 
-
-        if self.config and not (self.user_account and
-                                self.user_password):
+        if self.config and not (self.user_account and self.user_password):
             self.load_config()
 
         return self.user_password and self.user_password
-
-
 
     def load_config(self):
         """
@@ -401,14 +412,13 @@ class Garc(object):
             return {}
 
         data = {}
-        for key in ['user_account', 'user_password']:
+        for key in ["user_account", "user_password"]:
             try:
                 setattr(self, key, config.get(profile, key))
             except configparser.NoSectionError:
                 sys.exit("no such profile %s in %s" % (profile, path))
             except configparser.NoOptionError:
-                sys.exit("missing %s from profile %s in %s" % (
-                    key, profile, path))
+                sys.exit("missing %s from profile %s in %s" % (key, profile, path))
         return data
 
     def save_config(self):
@@ -420,9 +430,9 @@ class Garc(object):
         config = configparser.ConfigParser()
         config.read(self.config)
         config.add_section(self.profile)
-        config.set(self.profile, 'user_account', self.user_account)
-        config.set(self.profile, 'user_password', self.user_password)
-        with open(self.config, 'w') as config_file:
+        config.set(self.profile, "user_account", self.user_account)
+        config.set(self.profile, "user_password", self.user_password)
+        with open(self.config, "w") as config_file:
             config.write(config_file)
 
     def input_keys(self):
@@ -432,10 +442,10 @@ class Garc(object):
         print("\nPlease enter Gab account info.\n")
 
         def i(name):
-            return get_input(name.replace('_', ' ') + ": ")
+            return get_input(name.replace("_", " ") + ": ")
 
-        self.user_account = i('user_account')
-        self.user_password = i('password')
+        self.user_account = i("user_account")
+        self.user_password = i("password")
         self.save_config()
 
     def default_config(self):
@@ -444,21 +454,17 @@ class Garc(object):
         """
         return os.path.join(os.path.expanduser("~"), ".garc")
 
-
-
-
     def save_user_agent(self):
         config = configparser.ConfigParser()
         config.read(self.config)
         print("\nPlease enter user_agent info.\n")
 
         def i(name):
-            return get_input(name.replace('_', ' ') + ": ")
+            return get_input(name.replace("_", " ") + ": ")
 
-        self.user_agent = i('user_agent')
-        if 'headers' not in config.sections():
-            config.add_section('headers')
-        config.set('headers', 'user_agent', self.user_agent)
-        with open(self.config, 'w') as config_file:
+        self.user_agent = i("user_agent")
+        if "headers" not in config.sections():
+            config.add_section("headers")
+        config.set("headers", "user_agent", self.user_agent)
+        with open(self.config, "w") as config_file:
             config.write(config_file)
-
