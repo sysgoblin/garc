@@ -92,7 +92,7 @@ class Garc(object):
 
         num_gabs = 0
         for page in range(pages_count):
-            url = f"https://gab.com/api/v3/search?type=status&onlyVerified={only_verified}&q={q}&resolve=true&page={page}"
+            url = f"https://gab.com/api/v3/search?type={type}&onlyVerified={only_verified}&q={q}&resolve=true&page={page}"
             resp = self.get(url)
 
             if resp.status_code == 500:
