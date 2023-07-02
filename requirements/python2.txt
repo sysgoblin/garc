@@ -1,6 +1,0 @@
-pytest
-python-dateutil
-requests
-unicodecsv
-mock
-beautifulsoup4
