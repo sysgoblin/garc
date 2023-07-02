@@ -118,8 +118,41 @@ class Garc(object):
             for post in posts:
                 num_gabs += 1
                 yield post
-                if num_gabs == gabs:
+                if num_gabs == gabs and gabs != -1:
                     return
+
+    def group(self, group_id, gabs=-1, sort="newest"):
+        assert sort in ["newest", "oldest"]
+        num_gabs = 0
+        # if gabs is -1, we want to retrieve as many gabs as possible
+        if gabs == -1:
+            pages_count = 100000000 # set to a large number
+        else:
+            pages_count = int(gabs / 25) + (gabs % 25 > 0)
+
+        for page in range(pages_count):
+            url = f"https://gab.com/api/v1/timelines/group/{group_id}?page={page}&sort_by={sort}"
+            resp = self.get(url)
+
+            if resp.status_code == 500:
+                logging.error(f"Querying group {group_id} failed, recieved 500 from Gab.com")
+                break
+            elif resp.status_code == 429:
+                logging.warn("rate limited, sleeping two minutes")
+                time.sleep(100)
+                continue
+
+            posts = resp.json()
+
+            if not posts:
+                logging.info("No more posts returned for group: %s", (group_id))
+                break
+            for post in posts:
+                num_gabs += 1
+                yield post
+                if num_gabs == gabs and gabs != -1:
+                    return
+
 
     def hashtag(self, q, gabs=-1):
         """
