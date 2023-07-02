@@ -8,6 +8,7 @@ import datetime
 from bs4 import BeautifulSoup
 import html
 import configparser
+from typing import Dict
 
 get_input = input
 str_type = str
@@ -37,7 +38,7 @@ class Garc(object):
         self.http_errors = http_errors
         self.cookie = None
         self.profile = profile
-        self.search_types = ["date"]
+        self.search_types = ["status", "top", "account", "group", "link", "feed", "hashtag"]
 
         if config:
             self.config = config
@@ -47,21 +48,88 @@ class Garc(object):
         self.check_keys()
         self.load_headers()
 
-    def search(self, q, search_type="date", gabs=-1):
+    def search(
+            self,
+            q: str,
+            type: str="status",
+            gabs: int=-1,
+            only_verified: bool=False,
+            exact: bool=False,
+        ) -> Dict:
+        """Search Gab using provided query.
+
+        Args:
+            q (int): Query term.
+            type (str, optional): Search type to use. Defaults to "status".
+            gabs (int, optional): Number of gabs to return. Defaults to as many as possible.
+            only_verified (bool, optional): Only return gabs from verified accounts. Defaults to False.
+            exact (bool, optional): Results should match the exact query string. Defaults to False.
+
+        Raises:
+            ValueError: If invalid search type is provided.
+
+        Yields:
+            dict: JSON response from Gab.
         """
-        Pass in a query. Defaults to recent sort by date.
+
+        # validate search type
+        if type not in self.search_types:
+            raise ValueError(
+                f"Invalid search type. Please use one of the following: {', '.join(self.search_types)}"
+            )
+
+        # if gabs is -1, we want to retrieve as many gabs as possible
+        if gabs == -1:
+            pages_count = 100000000 # set to a large number
+        else:
+            # pages return 25 gabs per page so we need to divide by 25
+            # and round up to get the number of pages we need to retrieve
+            pages_count = int(gabs / 25) + (gabs % 25 > 0)
+
+        # if exact, we want to wrap the query in quotes
+        if exact:
+            q = f'"{q}"'
+
+        num_gabs = 0
+        for page in range(pages_count):
+            url = f"https://gab.com/api/v3/search?type=status&onlyVerified={only_verified}&q={q}&resolve=true&page={page}"
+            resp = self.get(url)
+
+            if resp.status_code == 500:
+                logging.error("search for %s failed, recieved 500 from Gab.com", (q))
+                break
+            elif resp.status_code == 429:
+                logging.warn("rate limited, sleeping two minutes")
+                time.sleep(100)
+                continue
+
+            json_response = resp.json()
+            # if there are no keys in the response, there are no results
+            if not json_response.keys():
+                break
+            # no matter the search type, the first key in the response contains the posts
+            # so we need to get the first key and then iterate over the posts
+            first_key = list(json_response.keys())[0]
+            posts = json_response[first_key]
+
+            if not posts:
+                logging.info("No more posts returned for search: %s", (q))
+                break
+            for post in posts:
+                num_gabs += 1
+                yield post
+                if num_gabs == gabs:
+                    return
+
+    def hashtag(self, q, gabs=-1):
+        """
+        Pass in a hashtag. Defaults to recent sort by date.
         Defaults to retrieving as many historical gabs as possible.
         """
-        # This can be expanded to other Gab search types
-        if search_type in self.search_types:
-            search_type = search_type
-        else:
-            search_type = "date"
 
         num_gabs = 0
         max_id = ""
         while True:
-            # url = "https://gab.com/api/search?q=%s&sort=%s&before=%s" % (q, search_type, num_gabs)
             url = "https://gab.com/api/v1/timelines/tag/%s?max_id=%s" % (q, max_id)
             resp = self.get(url)
 
@@ -83,10 +151,10 @@ class Garc(object):
                 break
             max_id = posts[-1]["id"]
             for post in posts:
+                num_gabs += 1
                 yield post
-            num_gabs += len(posts)
-            if num_gabs > gabs and gabs != -1:
-                break
+                if num_gabs > gabs and gabs != -1:
+                    return
 
     def public_search(
         self,
