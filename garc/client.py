@@ -153,6 +153,37 @@ class Garc(object):
                 if num_gabs == gabs and gabs != -1:
                     return
 
+    def group_media(self, group_id, gabs=-1):
+        num_gabs = 0
+        max_id = ""
+        while True:
+            url = f"https://gab.com/api/v1/groups/{group_id}/media_attachments?max_id={max_id}"
+            resp = self.get(url)
+
+            if resp.status_code == 500:
+                logging.error(f"media for group {group_id} failed, recieved 500 from Gab.com")
+                break
+            elif resp.status_code == 429:
+                logging.warn("rate limited, sleeping two minutes")
+                time.sleep(100)
+                continue
+            json_response = resp.json()
+
+            # get the `statuses` key from the response
+            posts = json_response.get("statuses")
+
+            if not posts:
+                logging.info(f"No more posts returned for group media: {group_id}")
+                break
+            # max id needs to be the id of the media attachment from the last post
+            max_id = posts[-1]["media_attachments"][0]["id"]
+
+            for post in posts:
+                num_gabs += 1
+                yield post
+                if num_gabs == gabs and gabs != -1:
+                    return
+
 
     def hashtag(self, q, gabs=-1):
         """
