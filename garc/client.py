@@ -39,7 +39,15 @@ class Garc(object):
         self.http_errors = http_errors
         self.cookie = None
         self.profile = profile
-        self.search_types = ["status", "top", "account", "group", "link", "feed", "hashtag"]
+        self.search_types = [
+            "status",
+            "top",
+            "account",
+            "group",
+            "link",
+            "feed",
+            "hashtag",
+        ]
 
         if config:
             self.config = config
@@ -50,13 +58,13 @@ class Garc(object):
         self.load_headers()
 
     def search(
-            self,
-            q: str,
-            type: str="status",
-            gabs: int=-1,
-            only_verified: bool=False,
-            exact: bool=False,
-        ) -> Dict:
+        self,
+        q: str,
+        type: str = "status",
+        gabs: int = -1,
+        only_verified: bool = False,
+        exact: bool = False,
+    ) -> Dict:
         """Search Gab using provided query.
 
         Args:
@@ -81,7 +89,7 @@ class Garc(object):
 
         # if gabs is -1, we want to retrieve as many gabs as possible
         if gabs == -1:
-            pages_count = 100000000 # set to a large number
+            pages_count = 100000000  # set to a large number
         else:
             # pages return 25 gabs per page so we need to divide by 25
             # and round up to get the number of pages we need to retrieve
@@ -93,7 +101,7 @@ class Garc(object):
 
         num_gabs = 0
         for page in range(pages_count):
-            url = f"https://gab.com/api/v3/search?type={type}&onlyVerified={only_verified}&q={q}&resolve=true&page={page}"
+            url = f"https://gab.com/api/v3/search?type={type}&onlyVerified={only_verified}&q={q}&resolve=true&page={page}" # noqa
             resp = self.get(url)
 
             if resp.status_code == 500:
@@ -127,7 +135,7 @@ class Garc(object):
         num_gabs = 0
         # if gabs is -1, we want to retrieve as many gabs as possible
         if gabs == -1:
-            pages_count = 100000000 # set to a large number
+            pages_count = 100000000  # set to a large number
         else:
             pages_count = int(gabs / 25) + (gabs % 25 > 0)
 
@@ -136,7 +144,9 @@ class Garc(object):
             resp = self.get(url)
 
             if resp.status_code == 500:
-                logging.error(f"Querying group {group_id} failed, recieved 500 from Gab.com")
+                logging.error(
+                    f"Querying group {group_id} failed, recieved 500 from Gab.com"
+                )
                 break
             elif resp.status_code == 429:
                 logging.warn("rate limited, sleeping two minutes")
@@ -162,7 +172,9 @@ class Garc(object):
             resp = self.get(url)
 
             if resp.status_code == 500:
-                logging.error(f"media for group {group_id} failed, recieved 500 from Gab.com")
+                logging.error(
+                    f"media for group {group_id} failed, recieved 500 from Gab.com"
+                )
                 break
             elif resp.status_code == 429:
                 logging.warn("rate limited, sleeping two minutes")
@@ -348,10 +360,13 @@ class Garc(object):
         collect comments from a users feed
         """
         # We need to get the account id to collect statuses
-        account_url = 'https://gab.com/api/v1/account_by_username/%s' % (q)
-        account_id = self.get(account_url).json()['id']
-        max_id = ''
-        base_url = "https://gab.com/api/v1/accounts/%s/statuses?only_comments=true&exclude_replies=false" % (account_id)
+        account_url = "https://gab.com/api/v1/account_by_username/%s" % (q)
+        account_id = self.get(account_url).json()["id"]
+        max_id = ""
+        base_url = (
+            "https://gab.com/api/v1/accounts/%s/statuses?only_comments=true&exclude_replies=false"
+            % (account_id)
+        )
         actual_endpoint = base_url
 
         num_gabs = 0
@@ -365,8 +380,8 @@ class Garc(object):
                 yield self.format_post(post)
                 max_id = post["id"]
             num_gabs += len(posts)
-            actual_endpoint = base_url + 'max_id=' + max_id
-            if  (num_gabs > gabs and gabs != -1):
+            actual_endpoint = base_url + "max_id=" + max_id
+            if num_gabs > gabs and gabs != -1:
                 break
 
     def login(self):
@@ -563,7 +578,7 @@ class Garc(object):
         config = configparser.ConfigParser()
         config.read(self.config)
         if "headers" not in config.sections():
-            user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
+            user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36" # noqa
         else:
             user_agent = config.get("headers", "user_agent")
 
