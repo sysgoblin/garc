@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import json
 import logging
 import time
 import requests
@@ -38,7 +39,15 @@ class Garc(object):
         self.http_errors = http_errors
         self.cookie = None
         self.profile = profile
-        self.search_types = ["status", "top", "account", "group", "link", "feed", "hashtag"]
+        self.search_types = [
+            "status",
+            "top",
+            "account",
+            "group",
+            "link",
+            "feed",
+            "hashtag",
+        ]
 
         if config:
             self.config = config
@@ -49,13 +58,13 @@ class Garc(object):
         self.load_headers()
 
     def search(
-            self,
-            q: str,
-            type: str="status",
-            gabs: int=-1,
-            only_verified: bool=False,
-            exact: bool=False,
-        ) -> Dict:
+        self,
+        q: str,
+        type: str = "status",
+        gabs: int = -1,
+        only_verified: bool = False,
+        exact: bool = False,
+    ) -> Dict:
         """Search Gab using provided query.
 
         Args:
@@ -80,7 +89,7 @@ class Garc(object):
 
         # if gabs is -1, we want to retrieve as many gabs as possible
         if gabs == -1:
-            pages_count = 100000000 # set to a large number
+            pages_count = 100000000  # set to a large number
         else:
             # pages return 25 gabs per page so we need to divide by 25
             # and round up to get the number of pages we need to retrieve
@@ -92,7 +101,7 @@ class Garc(object):
 
         num_gabs = 0
         for page in range(pages_count):
-            url = f"https://gab.com/api/v3/search?type={type}&onlyVerified={only_verified}&q={q}&resolve=true&page={page}"
+            url = f"https://gab.com/api/v3/search?type={type}&onlyVerified={only_verified}&q={q}&resolve=true&page={page}" # noqa
             resp = self.get(url)
 
             if resp.status_code == 500:
@@ -118,8 +127,85 @@ class Garc(object):
             for post in posts:
                 num_gabs += 1
                 yield post
-                if num_gabs == gabs:
+                if num_gabs == gabs and gabs != -1:
                     return
+
+    def group(self, group_id, gabs=-1, sort="newest"):
+        assert sort in ["newest", "oldest"]
+        num_gabs = 0
+        # if gabs is -1, we want to retrieve as many gabs as possible
+        if gabs == -1:
+            pages_count = 100000000  # set to a large number
+        else:
+            pages_count = int(gabs / 25) + (gabs % 25 > 0)
+
+        for page in range(pages_count):
+            url = f"https://gab.com/api/v1/timelines/group/{group_id}?page={page}&sort_by={sort}"
+            resp = self.get(url)
+
+            if resp.status_code == 500:
+                logging.error(
+                    f"Querying group {group_id} failed, recieved 500 from Gab.com"
+                )
+                break
+            elif resp.status_code == 429:
+                logging.warn("rate limited, sleeping two minutes")
+                time.sleep(100)
+                continue
+
+            posts = resp.json()
+
+            if not posts:
+                logging.info("No more posts returned for group: %s", (group_id))
+                break
+            for post in posts:
+                num_gabs += 1
+                yield post
+                if num_gabs == gabs and gabs != -1:
+                    return
+
+    def group_media(self, group_id, gabs=-1):
+        num_gabs = 0
+        max_id = ""
+        while True:
+            url = f"https://gab.com/api/v1/groups/{group_id}/media_attachments?max_id={max_id}"
+            resp = self.get(url)
+
+            if resp.status_code == 500:
+                logging.error(
+                    f"media for group {group_id} failed, recieved 500 from Gab.com"
+                )
+                break
+            elif resp.status_code == 429:
+                logging.warn("rate limited, sleeping two minutes")
+                time.sleep(100)
+                continue
+            json_response = resp.json()
+
+            # get the `statuses` key from the response
+            posts = json_response.get("statuses")
+
+            if not posts:
+                logging.info(f"No more posts returned for group media: {group_id}")
+                break
+            # max id needs to be the id of the media attachment from the last post
+            max_id = posts[-1]["media_attachments"][0]["id"]
+
+            for post in posts:
+                num_gabs += 1
+                yield post
+                if num_gabs == gabs and gabs != -1:
+                    return
+
+    def join_group(self, group_id):
+        url = f"https://gab.com/api/v1/groups/{group_id}/accounts"
+        resp = self.post(url)
+        return resp.json()
+
+    def leave_group(self, group_id):
+        url = f"https://gab.com/api/v1/groups/{group_id}/accounts"
+        resp = self.delete(url)
+        return resp.json()
 
     def hashtag(self, q, gabs=-1):
         """
@@ -274,10 +360,13 @@ class Garc(object):
         collect comments from a users feed
         """
         # We need to get the account id to collect statuses
-        account_url = 'https://gab.com/api/v1/account_by_username/%s' % (q)
-        account_id = self.get(account_url).json()['id']
-        max_id = ''
-        base_url = "https://gab.com/api/v1/accounts/%s/statuses?only_comments=true&exclude_replies=false" % (account_id)
+        account_url = "https://gab.com/api/v1/account_by_username/%s" % (q)
+        account_id = self.get(account_url).json()["id"]
+        max_id = ""
+        base_url = (
+            "https://gab.com/api/v1/accounts/%s/statuses?only_comments=true&exclude_replies=false"
+            % (account_id)
+        )
         actual_endpoint = base_url
 
         num_gabs = 0
@@ -291,8 +380,8 @@ class Garc(object):
                 yield self.format_post(post)
                 max_id = post["id"]
             num_gabs += len(posts)
-            actual_endpoint = base_url + 'max_id=' + max_id
-            if  (num_gabs > gabs and gabs != -1):
+            actual_endpoint = base_url + "max_id=" + max_id
+            if num_gabs > gabs and gabs != -1:
                 break
 
     def login(self):
@@ -316,6 +405,7 @@ class Garc(object):
             "authenticity_token": token,
         }
 
+        # need error handling for non 200 response
         d = requests.request(
             "POST",
             url,
@@ -324,6 +414,25 @@ class Garc(object):
             headers=self.headers,
         )
         self.cookie = d.cookies
+        self.bearer_token = self.get_bearer_token()
+
+    def get_bearer_token(self):
+        # load gab.com
+        url = "https://gab.com/home"
+        resp = self.get(url)
+
+        # parse html
+        page_info = BeautifulSoup(resp.content, "html.parser")
+        # get content of `script id='initial-state'` and read as json
+        initial_state = page_info.find("script", id="initial-state")
+        initial_state = json.loads(initial_state.contents[0])
+        # # get bearer token
+        bearer_token = initial_state.get("meta").get("access_token")
+
+        if not bearer_token:
+            logging.error("Failed to get bearer token")
+
+        self.bearer_token = bearer_token
 
     def followers(self, q):
         """
@@ -385,6 +494,38 @@ class Garc(object):
 
             self.get(url, **kwargs)
 
+    def post(self, url, **kwargs):
+        if not self.cookie:
+            self.login()
+
+        if not self.bearer_token:
+            self.get_bearer_token()
+
+        self.headers["authorization"] = "Bearer " + self.bearer_token
+        r = requests.post(url, cookies=self.cookie, headers=self.headers)
+        # clean auth token from headers
+        self.headers.pop("authorization", None)
+
+        if not r.ok:
+            logging.error("Error posting to Gab API: %s", r.text)
+        return r
+
+    def delete(self, url, **kwargs):
+        if not self.cookie:
+            self.login()
+
+        if not self.bearer_token:
+            self.get_bearer_token()
+
+        self.headers["authorization"] = "Bearer " + self.bearer_token
+        r = requests.delete(url, cookies=self.cookie, headers=self.headers)
+        # clean auth token from headers
+        self.headers.pop("authorization", None)
+
+        if not r.ok:
+            logging.error("Error posting to Gab API: %s", r.text)
+        return r
+
     def anonymous_get(self, url, **kwargs):
         """
         Perform an anonymous API request. Used for accessing public timelines.
@@ -437,7 +578,7 @@ class Garc(object):
         config = configparser.ConfigParser()
         config.read(self.config)
         if "headers" not in config.sections():
-            user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
+            user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36" # noqa
         else:
             user_agent = config.get("headers", "user_agent")
 
