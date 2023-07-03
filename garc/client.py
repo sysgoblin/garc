@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import json
 import logging
 import time
 import requests
@@ -184,6 +185,15 @@ class Garc(object):
                 if num_gabs == gabs and gabs != -1:
                     return
 
+    def join_group(self, group_id):
+        url = f"https://gab.com/api/v1/groups/{group_id}/accounts"
+        resp = self.post(url)
+        return resp.json()
+
+    def leave_group(self, group_id):
+        url = f"https://gab.com/api/v1/groups/{group_id}/accounts"
+        resp = self.delete(url)
+        return resp.json()
 
     def hashtag(self, q, gabs=-1):
         """
@@ -380,6 +390,7 @@ class Garc(object):
             "authenticity_token": token,
         }
 
+        # need error handling for non 200 response
         d = requests.request(
             "POST",
             url,
@@ -388,6 +399,25 @@ class Garc(object):
             headers=self.headers,
         )
         self.cookie = d.cookies
+        self.bearer_token = self.get_bearer_token()
+
+    def get_bearer_token(self):
+        # load gab.com
+        url = "https://gab.com/home"
+        resp = self.get(url)
+
+        # parse html
+        page_info = BeautifulSoup(resp.content, "html.parser")
+        # get content of `script id='initial-state'` and read as json
+        initial_state = page_info.find("script", id="initial-state")
+        initial_state = json.loads(initial_state.contents[0])
+        # # get bearer token
+        bearer_token = initial_state.get("meta").get("access_token")
+
+        if not bearer_token:
+            logging.error("Failed to get bearer token")
+
+        self.bearer_token = bearer_token
 
     def followers(self, q):
         """
@@ -448,6 +478,38 @@ class Garc(object):
             time.sleep(15)
 
             self.get(url, **kwargs)
+
+    def post(self, url, **kwargs):
+        if not self.cookie:
+            self.login()
+
+        if not self.bearer_token:
+            self.get_bearer_token()
+
+        self.headers["authorization"] = "Bearer " + self.bearer_token
+        r = requests.post(url, cookies=self.cookie, headers=self.headers)
+        # clean auth token from headers
+        self.headers.pop("authorization", None)
+
+        if not r.ok:
+            logging.error("Error posting to Gab API: %s", r.text)
+        return r
+
+    def delete(self, url, **kwargs):
+        if not self.cookie:
+            self.login()
+
+        if not self.bearer_token:
+            self.get_bearer_token()
+
+        self.headers["authorization"] = "Bearer " + self.bearer_token
+        r = requests.delete(url, cookies=self.cookie, headers=self.headers)
+        # clean auth token from headers
+        self.headers.pop("authorization", None)
+
+        if not r.ok:
+            logging.error("Error posting to Gab API: %s", r.text)
+        return r
 
     def anonymous_get(self, url, **kwargs):
         """
