@@ -101,7 +101,7 @@ class Garc(object):
 
         num_gabs = 0
         for page in range(pages_count):
-            url = f"https://gab.com/api/v3/search?type={type}&onlyVerified={only_verified}&q={q}&resolve=true&page={page}" # noqa
+            url = f"https://gab.com/api/v3/search?type={type}&onlyVerified={only_verified}&q={q}&resolve=true&page={page}"  # noqa
             resp = self.get(url)
 
             if resp.status_code == 500:
@@ -129,6 +129,33 @@ class Garc(object):
                 yield post
                 if num_gabs == gabs and gabs != -1:
                     return
+
+    def status_comments(self, status_id, gabs=-1, sort="newest"):
+        assert sort in ["newest", "oldest", "most-liked"]
+
+        url = f"https://gab.com/api/v1/status_comments/{status_id}?sort_by={sort}"
+        resp = self.get(url)
+
+        if resp.status_code == 500:
+            logging.error(
+                f"Querying status {status_id} failed, recieved 500 from Gab.com"
+            )
+            return
+        elif resp.status_code == 429:
+            logging.warn("rate limited, sleeping two minutes")
+            time.sleep(100)
+            return
+
+        posts = resp.json()
+
+        if not posts:
+            logging.info("No more posts returned for status: %s", (status_id))
+            return
+        for post in posts:
+            num_gabs += 1
+            yield post
+            if num_gabs == gabs and gabs != -1:
+                return
 
     def group(self, group_id, gabs=-1, sort="newest"):
         assert sort in ["newest", "oldest"]
@@ -578,7 +605,7 @@ class Garc(object):
         config = configparser.ConfigParser()
         config.read(self.config)
         if "headers" not in config.sections():
-            user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36" # noqa
+            user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"  # noqa
         else:
             user_agent = config.get("headers", "user_agent")
 
